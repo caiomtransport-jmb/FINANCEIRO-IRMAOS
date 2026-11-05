@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   date,
   integer,
@@ -14,12 +15,6 @@ import {
 // ---------- Enums (termos do CONTEXT.md) ----------
 
 export const statusParceiro = pgEnum("status_parceiro", ["ativo", "inativo"]);
-export const papelParceiro = pgEnum("papel_parceiro", [
-  "fornecedor_pecas",
-  "fornecedor_pneus",
-  "prestador_servico",
-  "cliente",
-]);
 export const grupoCategoria = pgEnum("grupo_categoria", ["receita", "custo", "despesa"]);
 export const propriedadeVeiculo = pgEnum("propriedade_veiculo", [
   "proprio",
@@ -70,6 +65,14 @@ export const parceiros = pgTable("parceiros", {
   ...timestamps,
 });
 
+// Catálogo de papéis (fornecedor de peças, cliente etc.). Cadastrado pelo administrador.
+export const papeis = pgTable("papeis", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nome: text("nome").notNull().unique(),
+  ...timestamps,
+});
+
+
 // Um parceiro pode ter vários papéis (Q3).
 export const parceiroPapeis = pgTable(
   "parceiro_papeis",
@@ -77,16 +80,45 @@ export const parceiroPapeis = pgTable(
     parceiroId: uuid("parceiro_id")
       .notNull()
       .references(() => parceiros.id, { onDelete: "restrict" }),
-    papel: papelParceiro("papel").notNull(),
+    papelId: uuid("papel_id")
+      .notNull()
+      .references(() => papeis.id, { onDelete: "restrict" }),
   },
-  (t) => [primaryKey({ columns: [t.parceiroId, t.papel] })]
+  (t) => [primaryKey({ columns: [t.parceiroId, t.papelId] })]
 );
+
+// Motoristas da frota. Um motorista pode trocar de veículo ou ser remanejado (ver vinculosMotorista).
+export const motoristas = pgTable("motoristas", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  nome: text("nome").notNull(),
+  documento: text("documento").unique(), // CPF, opcional
+  cnh: text("cnh"),
+  telefone: text("telefone"),
+  status: statusParceiro("status").notNull().default("ativo"),
+  ...timestamps,
+});
 
 export const veiculos = pgTable("veiculos", {
   id: uuid("id").primaryKey().defaultRandom(),
   placa: text("placa").notNull().unique(),
   descricao: text("descricao").notNull(),
   propriedade: propriedadeVeiculo("propriedade").notNull().default("proprio"),
+  ...timestamps,
+});
+
+// Histórico de quem dirigiu cada veículo. Vínculo atual = fim é null.
+// Trocar motorista de veículo ou remanejar fecha o vínculo anterior e abre outro.
+export const vinculosMotorista = pgTable("vinculos_motorista", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  motoristaId: uuid("motorista_id")
+    .notNull()
+    .references(() => motoristas.id, { onDelete: "restrict" }),
+  veiculoId: uuid("veiculo_id")
+    .notNull()
+    .references(() => veiculos.id, { onDelete: "restrict" }),
+  inicio: timestamp("inicio", { withTimezone: true }).defaultNow().notNull(),
+  fim: timestamp("fim", { withTimezone: true }),
+  motivo: text("motivo"), // ex.: "troca de veículo", "remanejamento"
   ...timestamps,
 });
 
@@ -108,7 +140,7 @@ export const categorias = pgTable("categorias", {
   id: uuid("id").primaryKey().defaultRandom(),
   nome: text("nome").notNull(),
   grupo: grupoCategoria("grupo").notNull(),
-  paiId: uuid("pai_id").references((): any => categorias.id, { onDelete: "restrict" }),
+  paiId: uuid("pai_id").references((): AnyPgColumn => categorias.id, { onDelete: "restrict" }),
   ...timestamps,
 });
 
@@ -133,10 +165,10 @@ export const titulos = pgTable("titulos", {
   boletoCodigoBarras: text("boleto_codigo_barras"),
   boletoVencimento: date("boleto_vencimento"),
   // Vínculo com a origem, quando houver.
-  recorrenciaId: uuid("recorrencia_id").references((): any => recorrencias.id, {
+  recorrenciaId: uuid("recorrencia_id").references((): AnyPgColumn => recorrencias.id, {
     onDelete: "restrict",
   }),
-  parcelaId: uuid("parcela_id").references((): any => parcelas.id, { onDelete: "restrict" }),
+  parcelaId: uuid("parcela_id").references((): AnyPgColumn => parcelas.id, { onDelete: "restrict" }),
   ...timestamps,
 });
 
